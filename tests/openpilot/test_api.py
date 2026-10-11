@@ -192,6 +192,56 @@ def spec(model_hw=(128, 256)) -> ModelSpec:
                    output_slices={'plan': slice(0, 16)}, checkpoint=None)
 
 
+class TestTheJoinFactoryWithAForksWarp(OpenpilotTest):
+  """An adapter's `warp_source` (interface.WarpSource) replaces the pickled
+  tinygrad warp: joining asks it for the warp and for the small model's
+  reset, and status follows its built()."""
+
+  def setUp(self):
+    super().setUp()
+    self.small = SimpleNamespace(name='small')
+    p = mock.patch.dict(sys.modules, fakes.fake_tinygrad())
+    p.start()
+    self.addCleanup(p.stop)
+    from jetlink.openpilot import link, warp
+    self.patch(link, 'present_early')
+    self.pickled_reset = self.patch(warp, 'prepare_reset')
+    self.pickled_warp = self.patch(warp, 'Warp')
+    self.patch(joining.JoiningModelState, '_join_loop', lambda s: None)
+    self.source = mock.Mock(spec=['built', 'geometry', 'make', 'prepare_reset'])
+    self.source.geometry.return_value = fakes.TICI
+    self.source.built.return_value = True
+    self.op.warp_source = self.source
+    self.parts.__dict__.pop('warps', None)
+
+  def join(self):
+    s = joining.join(self.parts, 1928, 1208, self.small)
+    self.addCleanup(s.close)
+    return s
+
+  def test_the_parts_warps_are_the_adapters(self):
+    self.assertIs(self.parts.warps, self.source)
+
+  def test_the_warp_and_the_reset_come_from_the_source_not_a_pickle(self):
+    self.join()
+    self.source.prepare_reset.assert_called_once_with(self.small)
+    self.source.make.assert_called_once_with(1928, 1208, 512, 256, fakes.frame_size(1928, 1208))
+    self.pickled_warp.assert_not_called()
+    self.pickled_reset.assert_not_called()
+
+  def test_the_small_models_reset_is_the_sources(self):
+    s = self.join()
+    s._reset_small()
+    self.source.prepare_reset.return_value.assert_called_once_with()
+
+  def test_a_source_that_fails_lets_the_link_go_and_raises(self):
+    from jetlink.openpilot import link
+    self.source.make.side_effect = RuntimeError('no frames')
+    with mock.patch.object(link, 'Link') as made, self.assertRaisesRegex(RuntimeError, 'no frames'):
+      joining.join(self.parts, 1928, 1208, self.small)
+    made.return_value.close.assert_called_once_with()
+
+
 class TestTheJoinFactory(OpenpilotTest):
   """What attach() builds: the joining model over the small one, with the warp
   loaded and warm before the frame loop exists."""

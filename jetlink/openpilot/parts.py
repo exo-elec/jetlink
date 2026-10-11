@@ -77,6 +77,11 @@ class Parts:
 
   @cached_property
   def warps(self):
+    # a fork whose camera path is not openpilot's compiled tinygrad warp says so
+    # with `warp_source` (interface.WarpSource); the pickled warp is the default
+    source = getattr(self.op, 'warp_source', None)
+    if source is not None:
+      return source
     from jetlink.openpilot.warp import Warps
     return Warps(self.op)
 

@@ -655,9 +655,15 @@ def join(parts, cam_w: int, cam_h: int, small) -> JoiningModelState:
       geometry = (img_w * 2, img_h * 2)
     else:
       geometry = parts.warps.geometry()[2:]
+    source = parts.warps
     try:
-      ready['reset_small'] = prepare_reset(small)
-      warp = Warp(parts.warps.load(cam_w, cam_h, *geometry), face.frame_size(cam_w, cam_h))
+      if hasattr(source, 'make'):
+        # the fork's own camera path (interface.WarpSource), not a tinygrad pickle
+        ready['reset_small'] = source.prepare_reset(small)
+        warp = source.make(cam_w, cam_h, *geometry, face.frame_size(cam_w, cam_h))
+      else:
+        ready['reset_small'] = prepare_reset(small)
+        warp = Warp(source.load(cam_w, cam_h, *geometry), face.frame_size(cam_w, cam_h))
     except Exception:
       link.close()
       raise

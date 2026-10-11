@@ -219,7 +219,12 @@ class JetlinkModelState:
     the rest of the inputs. send() puts it on the link and end() waits for
     its answer."""
     t0 = time.perf_counter()
-    self.warp.start(_address(bufs['img']), _address(bufs['big_img']), transforms['img'], transforms['big_img'])
+    start_buffers = getattr(self.warp, 'start_buffers', None)
+    if start_buffers is not None:
+      # a fork's warp that works on the camera buffers themselves (interface.WarpSource)
+      start_buffers(bufs, transforms)
+    else:
+      self.warp.start(_address(bufs['img']), _address(bufs['big_img']), transforms['img'], transforms['big_img'])
     t1 = time.perf_counter()
     # the GPU is warping; nothing below is an input to it
     self.client.drain()

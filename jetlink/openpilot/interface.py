@@ -148,6 +148,30 @@ class Openpilot(ModelSide, Protocol):
   """The whole adapter: one object implements every side."""
 
 
+class WarpSource(Protocol):
+  """Optional: an adapter member `warp_source` for a fork whose camera path is
+  not openpilot's compiled tinygrad warp (NGP10's OpenCL DrivingModelFrame).
+  Read with getattr, so it is not part of Openpilot and API stays as it is.
+  It replaces warps.Warps: built() and geometry() answer what Warps does, and
+  make() builds the warp joining.join() uses in place of warp.Warp."""
+
+  def built(self) -> bool:
+    """Can this device warp a frame for the large model?"""
+
+  def geometry(self) -> tuple[int, int, int, int]:
+    """(cam_w, cam_h, model_w, model_h) for this device."""
+
+  def make(self, cam_w: int, cam_h: int, model_w: int, model_h: int, frame_size: int) -> Any:
+    """The warp for this geometry: start_buffers(bufs, transforms) takes the
+    camera buffers and their transforms as modeld hands them over, wait()
+    returns once the frame is ready, and `output` is the (2, 6, h, w) uint8
+    frame (narrow, then wide) the link sends, valid until the next call."""
+
+  def prepare_reset(self, small: Any) -> Callable[[], None]:
+    """Capture the small model's reset to its start-of-drive state, called
+    before driving and then on a hand-back; nothing may be built in it."""
+
+
 def load_adapter(module: str) -> Openpilot:
   """The adapter an adapter module makes. An adapter module is the fork's
   module that holds every openpilot import jetlink needs: its top level

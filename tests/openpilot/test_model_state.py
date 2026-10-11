@@ -189,6 +189,31 @@ class TestWire(ModelStateTest):
     np.testing.assert_array_equal(got_tfm, tfm['img'])
     np.testing.assert_array_equal(got_big, tfm['big_img'])
 
+  def test_a_forks_warp_that_takes_the_buffers_is_given_them_whole(self):
+    # interface.WarpSource: start_buffers(bufs, transforms) in place of start(addresses...)
+    class BufferWarp(FakeWarp):
+      def __init__(self, warped):
+        super().__init__(warped)
+        self.taken = []
+
+      def start(self, *args):
+        raise AssertionError('the address path is not the fork\'s')
+
+      def start_buffers(self, bufs, transforms):
+        self.taken.append((bufs, transforms))
+        self.output[:] = b'\xee' * self.output.nbytes
+
+    spec = spec_for(STATEFUL)
+    state = self.make(spec, FakeClient())
+    state.warp = BufferWarp(np.zeros(np.prod(spec.warped_shape), np.uint8))
+    bufs = {k: SimpleNamespace(data=np.zeros(8, np.uint8)) for k in ('img', 'big_img')}
+    tfm = {'img': np.eye(3) * 2, 'big_img': np.eye(3) * 3}
+    state.run(bufs, tfm, {'desire': np.zeros(8, np.float32), 'traffic_convention': np.zeros(2, np.float32),
+                          'action_t': np.zeros(2, np.float32)})
+    (got_bufs, got_tfm), = state.warp.taken
+    self.assertIs(got_bufs, bufs)
+    self.assertIs(got_tfm, tfm)
+
   def test_every_frame_is_measured_for_the_leave(self):
     # the whole frame as modeld waits on it, against the server's own total;
     # the phone's log carries only the latter without this
