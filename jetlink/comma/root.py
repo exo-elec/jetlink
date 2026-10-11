@@ -14,7 +14,12 @@ failed; the reason is in the log line and, for the gadget, in those files.
     root.run('vm', 'apply')
 
 Only AGNOS has the gadget stack, the port's lever and the sysctls, so
-everywhere else run() is a quiet False and nothing is spawned.
+everywhere else run() is a quiet False and nothing is spawned. The exception
+is a board that says so with JETLINK_PLATFORM=static: its USB-C port role is
+fixed by its device tree (peripheral) and it has no USB-PD policy engine, charger
+voter or Qualcomm tuning to drive. There the generic actions (gadget, net,
+teardown, check) run the script as on AGNOS, and the AGNOS-only ones do nothing
+and say so (port, udc, vm, draw: True, nothing to do; rps: False, nothing steered).
 """
 from __future__ import annotations
 
@@ -26,6 +31,12 @@ from pathlib import Path
 log = logging.getLogger('jetlink.comma')
 
 AGNOS = os.path.isfile('/AGNOS')
+# a board whose port role is fixed by its device tree, set by the fork's adapter before jetlink is imported
+STATIC = os.environ.get('JETLINK_PLATFORM') == 'static'
+# what only AGNOS has the levers for: nothing to do on a static board, which is a success for these, and a
+# failure for rps, whose result says whether the receive work was steered
+AGNOS_ONLY_DONE = frozenset({'port', 'udc', 'vm', 'draw'})
+AGNOS_ONLY_NOT_DONE = frozenset({'rps'})
 
 # Resolved, so that <openpilot>/jetlink, a symlink into jetlink_repo, still
 # leads to the checkout's scripts.
@@ -45,7 +56,12 @@ def run(*args: str, timeout: float = TIMEOUT) -> bool:
   log line, with the last thing the script wrote to stderr, and False. Off
   AGNOS a False with no log line. Never raises."""
   if not AGNOS:
-    return False
+    if not STATIC:
+      return False
+    if args and args[0] in AGNOS_ONLY_DONE:
+      return True
+    if args and args[0] in AGNOS_ONLY_NOT_DONE:
+      return False
   what = ' '.join((SCRIPT.name, *args))
   try:
     result = subprocess.run(['sudo', '-n', 'bash', str(SCRIPT), *args], stdout=subprocess.DEVNULL,

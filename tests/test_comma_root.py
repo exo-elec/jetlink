@@ -342,3 +342,47 @@ def test_anything_else_is_usage(tmp_path, args):
   result = run_script(tmp_path, *args)
   assert result.returncode == 2
   assert 'usage:' in result.stderr
+
+
+# -- a static-role board (JETLINK_PLATFORM=static): the generic actions run, the AGNOS-only ones do nothing
+
+@pytest.fixture
+def static_run(monkeypatch):
+  def install(**kwargs):
+    fake = FakeRun(**kwargs)
+    monkeypatch.setattr(root.subprocess, 'run', fake)
+    monkeypatch.setattr(root, 'AGNOS', False)
+    monkeypatch.setattr(root, 'STATIC', True)
+    return fake
+  return install
+
+
+@pytest.mark.parametrize('args', [('gadget',), ('gadget', '--ios'), ('net',), ('teardown',), ('check',)])
+def test_a_static_board_runs_the_generic_actions_as_agnos_does(static_run, args):
+  fake = static_run()
+  assert root.run(*args) is True
+  [(argv, _)] = fake.calls
+  assert argv == ['sudo', '-n', 'bash', str(root.SCRIPT), *args]
+
+
+@pytest.mark.parametrize('args', [('port', 'hold'), ('port', 'device'), ('udc', 'apply'), ('udc', 'restore'),
+                                  ('vm', 'apply'), ('vm', 'restore'), ('draw', 'off'), ('draw', 'on')])
+def test_a_static_board_has_no_agnos_levers_and_that_is_not_a_failure(static_run, args):
+  fake = static_run()
+  assert root.run(*args) is True
+  assert fake.calls == []
+
+
+def test_a_static_board_has_nothing_to_steer_and_says_so(static_run):
+  fake = static_run()
+  assert root.run('rps') is False
+  assert fake.calls == []
+
+
+def test_without_agnos_or_static_nothing_runs(monkeypatch):
+  fake = FakeRun()
+  monkeypatch.setattr(root.subprocess, 'run', fake)
+  monkeypatch.setattr(root, 'AGNOS', False)
+  monkeypatch.setattr(root, 'STATIC', False)
+  assert root.run('gadget') is False and root.run('port', 'hold') is False
+  assert fake.calls == []
