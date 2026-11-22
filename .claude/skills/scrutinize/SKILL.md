@@ -64,11 +64,7 @@ Apply the items that fit this target. Mark the rest N/A with a one-line reason r
 - [ ] State machine transitions are reachable from the relevant entry states; no unreachable or stuck states introduced.
 - [ ] Timing: added work fits the loop/ISR budget, and timeouts are measured with wrap-safe arithmetic.
 
-### 4. Optional second opinion
-
-For a large or risky change (anything touching flash, boot, safety, protocols, linker/memory layout, or more than a few files), ask the `antigravity` subagent for an independent review of the same diff (no file edits). It runs its own preflight; if it reports that agy is missing, not signed in or out of quota on this PC, say so in the report and continue without it. Skip it where the repo requires local-only processing. Treat its points as leads to verify against your own trace; never copy them into the report unverified.
-
-### 5. Report
+### 4. Report
 
 Output one tight section per finding. Order by severity (blocker → major → nit). For each:
 
