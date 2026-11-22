@@ -46,21 +46,27 @@ For each claim the change/plan makes, answer:
 
 #### Repo-specific invariants
 
-If the repo's CLAUDE.md / AGENTS.md lists invariants, registries, or build/flash checks, verify the change against each of them here.
+If the repo's CLAUDE.md / AGENTS.md lists invariants, registries, branch-lineage rules, or build/flash checks, verify the change against each of them here. Where the repo defines its own review routing (e.g. a local deep-review model for bootloader/flash/CAN changes), run that too: this skill adds to those rules and does not replace them.
 
-#### Embedded / real-time checklist (apply when touching firmware or hardware-adjacent code: ISRs, drivers, CAN/SPI/UART/I2C, RTOS tasks, DSP/radar pipelines)
+#### Embedded / real-time checklist (apply when touching firmware or hardware-adjacent code: ISRs, drivers, buses such as CAN/SPI/UART/I2C, RTOS tasks, DSP/radar pipelines, bootloaders)
+
+Apply the items that fit this target. Mark the rest N/A with a one-line reason rather than forcing them.
 
 - [ ] No blocking operations (sleep, poll loops, dynamic allocation) inside ISR callbacks.
-- [ ] Static allocation only — no `malloc`/`free` introduced.
-- [ ] Safety interlocks checked before any output modification.
-- [ ] Layer separation respected: hardware drivers not called directly from business logic.
-- [ ] Sequence/counter values seeded from the peer's last known state, not an independent local counter.
-- [ ] Protected memory regions (bootloader, calibration) not referenced or modified.
-- [ ] State machine transitions reachable from the relevant entry states; no unreachable or stuck states introduced.
+- [ ] Static allocation only: no `malloc`/`free` introduced.
+- [ ] Safety interlocks checked before any output or actuator change.
+- [ ] Layer separation respected: business logic goes through the HAL / port layer, not straight to vendor drivers or registers. (A port layer that wraps vendor drivers is the intended layer, not a violation.)
+- [ ] Where the protocol uses rolling counters or sequence numbers: they are seeded from the peer's last known state, not an independent local counter, and wrap-around is handled.
+- [ ] Protected flash regions are respected: erase/program paths bounds-check so they cannot touch the bootloader's own sectors, calibration data, or configuration/boot header regions (e.g. UCB/BMHD on AURIX). In a bootloader repo the bootloader code itself is the subject under review; the check is about what its flash routines can overwrite.
+- [ ] Flash erase/program: the code doing it does not execute from the bank it modifies (RAM or another bank), write-protection/ENDINIT-style locks are re-applied on every path, and the watchdog is serviced during long erases.
+- [ ] Verification reads see real flash contents (uncached / cache invalidated, ECC errors handled).
+- [ ] Before jumping to another image: interrupts, DMA and peripherals are torn down, other cores are parked, and the vector table / stack are set for the target.
+- [ ] State machine transitions are reachable from the relevant entry states; no unreachable or stuck states introduced.
+- [ ] Timing: added work fits the loop/ISR budget, and timeouts are measured with wrap-safe arithmetic.
 
 ### 4. Optional second opinion
 
-For a large or risky change, and when the `antigravity` subagent is available (the `agy` CLI is installed and signed in), ask it for an independent review of the same diff (no file edits). Treat its points as leads to verify against your own trace; never copy them into the report unverified.
+For a large or risky change (anything touching flash, boot, safety, protocols, linker/memory layout, or more than a few files), ask the `antigravity` subagent for an independent review of the same diff (no file edits). It runs its own preflight; if it reports that agy is missing, not signed in or out of quota on this PC, say so in the report and continue without it. Skip it where the repo requires local-only processing. Treat its points as leads to verify against your own trace; never copy them into the report unverified.
 
 ### 5. Report
 
